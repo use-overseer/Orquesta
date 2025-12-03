@@ -23,19 +23,21 @@ async def health_check():
     """Endpoint de health check requerido por Leapcell"""
     return {"status": "healthy", "service": "orquesta"}
 
-@app.on_event("startup")
-async def startup_event():
-    """Inicialización asíncrona con timeout"""
-    print("[Startup] Iniciando Orquesta API...")
+async def init_db_background():
+    """Ejecuta init_db en background sin bloquear el startup"""
     try:
-        # Usar asyncio.wait_for para evitar bloquear indefinidamente
-        await asyncio.wait_for(init_db(), timeout=8.0)
+        await init_db()
         print("[Startup] ✓ Base de datos inicializada")
-    except asyncio.TimeoutError:
-        print("[Startup] ⚠ Timeout en init_db, continuando...")
     except Exception as e:
         print(f"[Startup] ⚠ Error en init_db: {e}")
-    print("[Startup] ✓ API lista para recibir requests")
+
+@app.on_event("startup")
+async def startup_event():
+    """Inicialización no bloqueante - init_db en background"""
+    print("[Startup] Iniciando Orquesta API...")
+    # Ejecutar init_db en background sin bloquear el startup
+    asyncio.create_task(init_db_background())
+    print("[Startup] ✓ API lista (DB inicializándose en background)")
 
 @app.get("/v1/config")
 async def get_config():
