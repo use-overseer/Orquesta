@@ -11,17 +11,15 @@ load_dotenv()
 
 # Configuración de la base de datos
 DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    # Para desarrollo local, usar SQLite si no hay DATABASE_URL
-    DATABASE_URL = "sqlite+aiosqlite:///./orquesta.db"
 
 # Asegurar que se use el driver async para PostgreSQL
-if DATABASE_URL.startswith("postgresql://"):
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+if DATABASE_URL and (DATABASE_URL.startswith("postgres://") or DATABASE_URL.startswith("postgresql://")):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1).replace("postgresql://", "postgresql+asyncpg://", 1)
 
 # Configuración del servidor
-HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", "8000"))
+HOST = os.getenv("HOST")
+PORT_STR = os.getenv("PORT")
+PORT = int(PORT_STR) if PORT_STR else None
 
 # Token de administrador
 ADMIN_TOKEN = os.getenv("ORQUESTA_ADMIN_TOKEN")
