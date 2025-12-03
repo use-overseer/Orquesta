@@ -1,32 +1,35 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from models import Base
 from config import DATABASE_URL
 import asyncio
 
-# Configuración mejorada del engine con timeouts y pool
+# Configuración optimizada del engine para evitar idle timeouts
 engine = create_async_engine(
     DATABASE_URL,
-    echo=True,
-    pool_pre_ping=True,  # Verifica conexiones antes de usar
-    pool_size=5,
-    max_overflow=10,
-    pool_recycle=3600,  # Recicla conexiones cada hora
+    echo=False,  # Cambiado a False para reducir ruido en logs
+    poolclass=NullPool,  # Evita pool de conexiones - crea nueva cada vez
     connect_args={
-        "server_settings": {"jit": "off"},
-        "command_timeout": 60,
-        "timeout": 30,
+        "server_settings": {
+            "jit": "off",
+            "idle_in_transaction_session_timeout": "30000",  # 30 segundos
+        },
+        "command_timeout": 10,  # Timeout para comandos individuales
+        "timeout": 10,  # Timeout de conexión
     }
 )
 
 AsyncSessionLocal = sessionmaker(
     bind=engine,
     class_=AsyncSession,
-    expire_on_commit=False
+    expire_on_commit=False,
+    autoflush=False,
+    autocommit=False
 )
 
 async def init_db():
-    """Inicializa la base de datos con reintentos"""
+    """Inicializa la base de datos con reintentos y manejo de timeouts"""
     max_retries = 3
     retry_delay = 2
     
@@ -36,20 +39,19 @@ async def init_db():
             async with engine.begin() as conn:
                 await asyncio.wait_for(
                     conn.run_sync(Base.metadata.create_all),
-                    timeout=10.0
+                    timeout=15.0
                 )
             print("[DB Init] Tablas creadas exitosamente")
             return
         except asyncio.TimeoutError:
-            print(f"[DB Init] ✗ Timeout en intento {attempt + 1}")
+            print(f"[DB Init] Timeout en intento {attempt + 1}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_delay)
             else:
                 print("[DB Init] Continuando sin verificar tablas...")
-                # No fallar el startup, solo advertir
                 return
         except Exception as e:
-            print(f"[DB Init] Error en intento {attempt + 1}: {e}")
+            print(f"[DB Init] Error en intento {attempt + 1}: {str(e)[:100]}")
             if attempt < max_retries - 1:
                 await asyncio.sleep(retry_delay)
             else:
@@ -57,5 +59,13 @@ async def init_db():
                 return
 
 async def get_db():
-    async with AsyncSessionLocal() as session:
+    """Dependency para obtener sesión de DB con manejo de errores"""
+    session = AsyncSessionLocal()
+    try:
         yield session
+    except Exception as e:
+        await session.rollback()
+        print(f"[DB Session] Error en sesión: {str(e)[:100]}")
+        raise
+    finally:
+        await session.close()
