@@ -1,22 +1,25 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import NullPool
+from sqlalchemy.pool import QueuePool
 from models import Base
 from config import DATABASE_URL
 import asyncio
 
-# Configuración optimizada del engine para evitar idle timeouts
+# Configuración optimizada del engine para Leapcell
 engine = create_async_engine(
     DATABASE_URL,
-    echo=False,  # Cambiado a False para reducir ruido en logs
-    poolclass=NullPool,  # Evita pool de conexiones - crea nueva cada vez
+    echo=False,
+    poolclass=QueuePool,
+    pool_size=5,
+    max_overflow=10,
+    pool_pre_ping=True,  # Verifica conexiones antes de usarlas
+    pool_recycle=300,  # Recicla conexiones cada 5 min
     connect_args={
         "server_settings": {
             "jit": "off",
-            "idle_in_transaction_session_timeout": "30000",  # 30 segundos
         },
-        "command_timeout": 10,  # Timeout para comandos individuales
-        "timeout": 10,  # Timeout de conexión
+        "command_timeout": 30,  # Aumentado para cold starts
+        "timeout": 20,  # Timeout de conexión aumentado
     }
 )
 
