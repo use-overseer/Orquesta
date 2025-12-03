@@ -1,90 +1,108 @@
 # Orquesta
 
-Orquesta is an intelligent, self-learning task assignment service. It combines configurable heuristics with an auto-updating Machine Learning model to deliver fair and efficient recommendations.
+## What is Orquesta?
 
-## Setup
+Orquesta is an intelligent API specifically designed for the management and automatic assignment of tasks and privileges within congregations. Its purpose is to optimize the distribution of responsibilities in a fair, efficient, and data-driven manner, based on historical data and predefined rules.
 
-1. Install dependencies:
-   ```bash
-   pip3 install -r requirements.txt
-   ```
+## Why does it exist? (Privacy and Security)
 
-2. Run the server:
-   ```bash
-   uvicorn main:app --reload --port 8000
-   ```
+Orquesta was born out of a critical need: **data privacy**.
 
-## Authentication
+Congregations handle sensitive information about their members and activities. In the age of Artificial Intelligence, sending this data to public models (like ChatGPT, Claude, or Gemini) implies a significant risk, as this information could be used to train global models or be exposed on third-party servers without adequate control.
 
-The API is protected by a Bearer token.
-**Default Token**: `secret-token` (Change this in `main.py` for production).
+Orquesta exists to offer a **secure and private alternative**. As a specialized system, it guarantees that congregation data:
+1.  **Is not shared** with large tech corporations for model training.
+2.  **Remains under control**, processed in a dedicated environment.
+3.  **Is used solely** for the purpose of generating assignments and improving internal logistics.
 
-Include the header in your requests:
-`Authorization: Bearer secret-token`
+---
 
-## Usage Examples
+## Available Endpoints
 
-### 1. Check Status
+Below are the available endpoints to integrate Orquesta into your applications.
+
+### 1. Verify Configuration
+Verify that the API is active and get its version.
+
+**Usage:**
 ```bash
-curl http://127.0.0.1:8000/
+curl -X GET https://orquesta.leapcell.app/v1/config
 ```
 
-### 2. Assign a Task (Get Recommendation)
-Ask Orquesta to pick the best candidate for a role.
+### 2. Request an Access Token
+To use the assignment endpoints, you need a token. You can request one with this endpoint. An administrator will need to approve your request.
 
+**Usage:**
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/assign \
+curl -X POST https://orquesta.leapcell.app/v1/tokens/request \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer secret-token" \
   -d '{
-    "role": "Lector",
-    "person_ids": [1, 2, 3],
-    "stats": {},
-    "weights": null
+    "owner": "Your Name",
+    "email": "your@email.com",
+    "purpose": "Description of why you will use the API"
   }'
 ```
 
-### 3. Provide Feedback (Teach the Model)
-Tell Orquesta if the assignment was accepted or corrected. This **automatically retrains** the ML model.
+### 3. Check Your Token Status
+Check if your token is valid, active, or when it expires.
 
+**Usage:**
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/feedback \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer secret-token" \
-  -d '{
-    "role": "Lector",
-    "person_id": 2,
-    "result": "aceptada"
-  }'
+curl -X GET https://orquesta.leapcell.app/v1/tokens/check \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE"
 ```
-*Result options: "aceptada", "corrigida"*
 
-### 4. Batch Meeting Assignment (New)
-Generate assignments for an entire meeting, respecting gender rules, role capabilities, and rotation.
+### 4. Generate an Individual Assignment (`/v1/assign`)
+Ask the system to choose the best candidate for a specific task based on history and availability.
 
+**Usage:**
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/assign_meeting \
+curl -X POST https://orquesta.leapcell.app/v1/assign \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer secret-token" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -d '{
-    "week_date": "2023-11-01",
-    "exclude_names": ["Busy Person"],
+    "task_type": "reading",
+    "date": "2023-10-27",
     "candidates": [
-      {"id": 1, "name": "Bro. Smith", "gender": "M", "roles": ["presidente"], "last_assignment_weeks_ago": 4},
-      {"id": 2, "name": "Sis. Jones", "gender": "F", "roles": ["publicador"], "last_assignment_weeks_ago": 8},
-      {"id": 3, "name": "Sis. Doe", "gender": "F", "roles": ["publicador"], "last_assignment_weeks_ago": 6}
-    ],
-    "activities": [
-      {"type": "presidente", "title": "Chairman", "requires_assistant": false},
-      {"type": "seamos_mejores_maestros", "title": "Bible Study", "requires_assistant": true}
+      {"id": 1, "name": "Brother A", "last_assignment": "2023-10-01", "load": 0.5},
+      {"id": 2, "name": "Brother B", "last_assignment": "2023-09-15", "load": 0.2}
     ]
   }'
 ```
 
-## Project Structure
+### 5. Generate Assignments for a Complete Meeting (`/v1/assign_meeting`)
+Generate all necessary assignments for an entire meeting in a single call.
 
-- `main.py`: API endpoints and authentication.
-- `assigner.py`: Scoring logic, ML training loop, feedback processing, and **batch assignment logic**.
-- `models.py`: Database schemas (Persons, History, Weights).
-- `database.py`: Async DB connection.
-- `train_model.py`: Script to bootstrap the initial dummy model.
+**Usage:**
+```bash
+curl -X POST https://orquesta.leapcell.app/v1/assign_meeting \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{
+    "date": "2023-10-27",
+    "meeting_type": "weekend",
+    "requirements": [
+      {"role": "chairman", "count": 1},
+      {"role": "reader", "count": 1}
+    ],
+    "candidates": [
+      {"id": 1, "name": "Brother A", "roles": ["chairman", "reader"]},
+      {"id": 2, "name": "Brother B", "roles": ["reader"]}
+    ]
+  }'
+```
+
+### 6. Send Feedback (`/v1/feedback`)
+Help Orquesta learn. Send information about whether an assignment was successful or rejected to improve future decisions.
+
+**Usage:**
+```bash
+curl -X POST https://orquesta.leapcell.app/v1/feedback \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -d '{
+    "assignment_id": "assignment_id_here",
+    "success": true,
+    "comments": "The brother accepted and performed the task correctly"
+  }'
+```
