@@ -4,7 +4,6 @@ sqlalchemy
 alembic
 pydantic
 python-multipart
-aiosqlite
 greenlet
 scikit-learn
 joblib
