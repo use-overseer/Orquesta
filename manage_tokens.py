@@ -21,9 +21,9 @@ async def create_token(owner_name: str):
         )
         session.add(api_key)
         await session.commit()
-        print(f"\n✅ Token created successfully for '{owner_name}'")
-        print(f"🔑 Token: {new_token}")
-        print(f"📋 Header: Authorization: Bearer {new_token}\n")
+        print(f"\nToken created successfully for '{owner_name}'")
+        print(f"Token: {new_token}")
+        print(f"Header: Authorization: Bearer {new_token}\n")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, Date, JSON, Boolean, Float, Text
+from sqlalchemy import Column, Integer, String, Date, JSON, Boolean, Float, Text, DateTime
 from sqlalchemy.orm import declarative_base
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -40,5 +41,21 @@ class ApiKey(Base):
     id = Column(Integer, primary_key=True, index=True)
     key = Column(String, unique=True, index=True)
     owner = Column(String) # Nombre del usuario o servicio (e.g. "App Movil", "Admin")
+    purpose = Column(String, nullable=True)  # Propósito del token
     is_active = Column(Boolean, default=True)
     created_at = Column(Date)
+    expires_at = Column(Date, nullable=True)  # Fecha de expiración
+    last_used = Column(DateTime, nullable=True)  # Último uso del token
+
+class TokenRequest(Base):
+    """Solicitudes de tokens que requieren aprobación administrativa"""
+    __tablename__ = "token_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    owner = Column(String, index=True)  # Nombre del solicitante
+    email = Column(String)  # Email de contacto
+    purpose = Column(String)  # Propósito del token
+    status = Column(String, default="pending")  # pending, approved, rejected
+    requested_at = Column(DateTime, default=datetime.utcnow)
+    reviewed_at = Column(DateTime, nullable=True)
+    reviewed_by = Column(String, nullable=True)  # Admin que revisó
+    notes = Column(Text, nullable=True)  # Notas del admin

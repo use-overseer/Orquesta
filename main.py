@@ -3,8 +3,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db, init_db
 from models import Base
 import assigner
+from token_endpoints import router as token_router
+from config import HOST, PORT
 
 app = FastAPI(title="Orquesta", version="1.0.0")
+
+# Incluir el router de gestión de tokens
+app.include_router(token_router)
 
 @app.on_event("startup")
 async def startup_event():
@@ -77,4 +82,4 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=HOST, port=PORT)

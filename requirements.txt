@@ -8,3 +8,6 @@ aiosqlite
 greenlet
 scikit-learn
 joblib
+httpx
+email-validator
+python-dotenv
