@@ -5,15 +5,37 @@ from models import Base
 import assigner
 from token_endpoints import router as token_router
 from config import HOST, PORT
+import asyncio
 
-app = FastAPI(title="Orquesta", version="1.0.0")
+app = FastAPI(
+    title="Orquesta",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
 
 # Incluir el router de gestión de tokens
 app.include_router(token_router)
 
+# Health check para Leapcell
+@app.get("/kaithheathcheck")
+async def health_check():
+    """Endpoint de health check requerido por Leapcell"""
+    return {"status": "healthy", "service": "orquesta"}
+
 @app.on_event("startup")
 async def startup_event():
-    await init_db()
+    """Inicialización asíncrona con timeout"""
+    print("[Startup] Iniciando Orquesta API...")
+    try:
+        # Usar asyncio.wait_for para evitar bloquear indefinidamente
+        await asyncio.wait_for(init_db(), timeout=8.0)
+        print("[Startup] ✓ Base de datos inicializada")
+    except asyncio.TimeoutError:
+        print("[Startup] ⚠ Timeout en init_db, continuando...")
+    except Exception as e:
+        print(f"[Startup] ⚠ Error en init_db: {e}")
+    print("[Startup] ✓ API lista para recibir requests")
 
 @app.get("/v1/config")
 async def get_config():
@@ -55,7 +77,6 @@ async def assign_task(
     result = await assigner.assign_best_candidate(payload, db)
     return {"status": "assigned", "data": result}
 
-
 @app.post("/v1/feedback")
 async def feedback(
     payload: assigner.FeedbackPayload,
@@ -65,6 +86,7 @@ async def feedback(
     """Endpoint to receive feedback about a previous assignment and update model weights."""
     result = await assigner.process_feedback(payload, db)
     return {"status": "feedback_processed", "data": result}
+
 @app.post("/v1/assign_meeting")
 async def assign_meeting(
     payload: assigner.MeetingPayload,
@@ -77,9 +99,12 @@ async def assign_meeting(
 
 @app.get("/")
 async def root():
-    return {"message": "Orquesta API is running"}
-
+    return {
+        "message": "Orquesta API is running",
+        "version": "1.0.0",
+        "docs": "/docs"
+    }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host=HOST, port=PORT)
+    uvicorn.run(app, host=HOST or "0.0.0.0", port=PORT or 8080)
