@@ -11,3 +11,5 @@ joblib
 httpx
 email-validator
 python-dotenv
+asyncpg
+psycopg2-binary
