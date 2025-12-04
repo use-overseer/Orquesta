@@ -1,4 +1,4 @@
-# orquesta_v3.py  ← REEMPLAZA TU ARCHIVO ACTUAL
+# orquesta.py - Versión 3.0 con manejo robusto de errores
 import json
 import random
 import os
@@ -11,7 +11,7 @@ from flask import Flask, request, jsonify, Blueprint
 
 # Configurar logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -36,8 +36,15 @@ class OrquestaV3:
         self.load_memory()
 
     def load_memory(self):
+        """Carga memoria con manejo robusto de errores"""
         if os.path.exists(self.memory_file):
             try:
+                # Verificar que el archivo no esté vacío
+                if os.path.getsize(self.memory_file) == 0:
+                    logger.warning(f"⚠️  Archivo {self.memory_file} está vacío. Inicializando memoria limpia.")
+                    self.reset_memory()
+                    return
+                
                 with open(self.memory_file, "rb") as f:
                     data = pickle.load(f)
                     self.ultima_asignacion = data.get("ultima_asignacion", {})
@@ -48,65 +55,106 @@ class OrquestaV3:
                         self.puntuacion_rol[nombre] = ScoreDict(roles)
                     self.feedback_count = data.get("feedback_count", 0)
                     self.feedback_history = data.get("feedback_history", [])
-                print(f"Orquesta 3.0 cargada | {len(self.ultima_asignacion)} hermanos recordados | {len(self.feedback_history)} feedbacks")
+                
+                logger.info(f"✅ Memoria cargada: {len(self.ultima_asignacion)} hermanos, {len(self.feedback_history)} feedbacks")
+                
+            except (EOFError, pickle.UnpicklingError) as e:
+                logger.error(f"❌ Error cargando memoria (archivo corrupto): {e}")
+                logger.info("🔄 Respaldando archivo corrupto y creando memoria limpia...")
+                
+                # Respaldar archivo corrupto
+                backup_file = f"{self.memory_file}.corrupted.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                try:
+                    os.rename(self.memory_file, backup_file)
+                    logger.info(f"📦 Backup creado: {backup_file}")
+                except Exception as backup_error:
+                    logger.error(f"No se pudo crear backup: {backup_error}")
+                
+                self.reset_memory()
+                
             except Exception as e:
-                logger.error(f"Error cargando memoria: {e}")
+                logger.error(f"❌ Error inesperado cargando memoria: {e}")
+                logger.error(traceback.format_exc())
                 self.reset_memory()
         else:
-            print("Orquesta 3.0: Primera vez. ¡Hola mundo!")
+            logger.info("🆕 Primera ejecución: inicializando Orquesta v3.0")
             self.reset_memory()
 
     def reset_memory(self):
+        """Inicializa memoria limpia"""
         self.ultima_asignacion = {}
         self.puntuacion_rol = PuntuacionRoles()
         self.feedback_count = 0
         self.feedback_history = []
+        logger.info("🧹 Memoria reiniciada correctamente")
 
     def save_memory(self):
+        """Guarda memoria con manejo de errores"""
         try:
-            with open(self.memory_file, "wb") as f:
+            # Guardar en archivo temporal primero
+            temp_file = f"{self.memory_file}.tmp"
+            
+            with open(temp_file, "wb") as f:
                 pickle.dump({
                     "ultima_asignacion": self.ultima_asignacion,
                     "puntuacion_rol": dict(self.puntuacion_rol),
                     "feedback_count": self.feedback_count,
                     "feedback_history": self.feedback_history
                 }, f)
-            logger.info(f"✅ Memoria guardada: {len(self.ultima_asignacion)} hermanos, {self.feedback_count} feedbacks")
+            
+            # Reemplazar archivo original solo si la escritura fue exitosa
+            if os.path.exists(self.memory_file):
+                os.remove(self.memory_file)
+            os.rename(temp_file, self.memory_file)
+            
+            logger.info(f"💾 Memoria guardada: {len(self.ultima_asignacion)} hermanos, {self.feedback_count} feedbacks")
+            
         except Exception as e:
             logger.error(f"❌ ERROR guardando memoria: {str(e)}")
             logger.error(traceback.format_exc())
+            
+            # Limpiar archivo temporal si existe
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except:
+                    pass
 
     def semanas_desde_ultima(self, nombre, fecha_ref):
         if nombre not in self.ultima_asignacion:
             return 999
-        ultima = datetime.fromisoformat(self.ultima_asignacion[nombre])
-        ref = datetime.fromisoformat(fecha_ref)
-        return max(1, (ref - ultima).days // 7)
+        try:
+            ultima = datetime.fromisoformat(self.ultima_asignacion[nombre])
+            ref = datetime.fromisoformat(fecha_ref)
+            return max(1, (ref - ultima).days // 7)
+        except Exception as e:
+            logger.warning(f"Error calculando semanas para {nombre}: {e}")
+            return 999
 
     def asignar(self, payload, fecha_semana):
-        logger.debug(f"Iniciando asignar() con fecha: {fecha_semana}")
+        logger.info(f"🎯 Iniciando asignación para fecha: {fecha_semana}")
         
         candidatos = payload.get("candidatos_publicador", [])
-        logger.debug(f"Candidatos publicador: {len(candidatos)} encontrados")
+        logger.info(f"👥 Candidatos publicador: {len(candidatos)}")
         
-        # Validar que se hayan enviado candidatos
         if not candidatos:
             logger.warning("⚠️  No se recibieron candidatos para asignar")
-            logger.warning("Asegúrate de enviar 'candidatos_publicador' con al menos un candidato")
-            logger.warning("Ejemplo: {'nombre': 'Juan Pérez', 'genero': 'M', 'roles': ['publicador']}")
         
         roles_generales = payload.get("roles_generales", {})
-        logger.debug(f"Roles generales: {list(roles_generales.keys())}")
+        logger.info(f"📋 Roles generales: {list(roles_generales.keys())}")
         
         actividades_raw = payload.get("actividades", [])
-        logger.debug(f"Actividades: {len(actividades_raw)} encontradas")
+        logger.info(f"📝 Actividades: {len(actividades_raw)}")
 
         # === 1. Asignar roles generales ===
         roles_asignados = {}
         usados = set()
 
         for rol, lista in roles_generales.items():
-            if not lista: continue
+            if not lista: 
+                roles_asignados[rol] = None
+                continue
+            
             candidatos_rol = [c for c in lista if c not in usados]
             if not candidatos_rol:
                 roles_asignados[rol] = None
@@ -118,15 +166,14 @@ class OrquestaV3:
                 semanas = self.semanas_desde_ultima(nombre, fecha_semana)
                 aprendido = self.puntuacion_rol[nombre][rol]
                 score = (semanas / 20.0) * 0.6 + aprendido * 0.4
-                # Agregar nombre como tercer elemento para desempatar
                 scores.append((score, nombre, nombre))
 
-            logger.debug(f"Rol '{rol}': {len(scores)} candidatos, tipo primer score: {type(scores[0]) if scores else 'vacío'}")
             scores.sort(reverse=True)
-            elegido = scores[0][1]  # El nombre está en posición 1
+            elegido = scores[0][1]
             roles_asignados[rol] = elegido
             usados.add(elegido)
             self.ultima_asignacion[elegido] = fecha_semana
+            logger.debug(f"✓ {rol}: {elegido}")
 
         # === 2. Asignar actividades ===
         actividades = []
@@ -136,26 +183,20 @@ class OrquestaV3:
             tema_upper = tema.upper()
             
             # Identificar sección SEAMOS MEJORES MAESTROS
-            # Incluye: DE CASA EN CASA, PREDICACIÓN, REVISITA, CURSO BÍBLICO, DISCURSO, LMD, ANIME
             es_smc = any(palabra in tema_upper for palabra in [
                 "DE CASA EN CASA", "PREDICACIÓN", "PREDICACION", "REVISITA", 
                 "CURSO BÍBLICO", "CURSO BIBLICO", "DISCURSO", "LMD", "ANIME"
             ])
             
-            # Filtrar candidatos disponibles
             disponibles = [c for c in candidatos if c["nombre"] not in usados]
 
             # Aplicar reglas de género según sección
             if es_smc:
-                # SEAMOS MEJORES MAESTROS: preferir mujeres
-                logger.debug(f"Tema SMC detectado: {tema}")
                 mujeres = [c for c in disponibles if c["genero"] in ["F", "Mujer"]]
                 hombres = [c for c in disponibles if c["genero"] in ["M", "Hombre"]]
                 candidatos_pub = mujeres + hombres
                 candidatos_ay = mujeres + hombres
             else:
-                # TESOROS y NUESTRA VIDA CRISTIANA: solo hombres
-                logger.debug(f"Tema no-SMC detectado: {tema}")
                 candidatos_pub = [c for c in disponibles if c["genero"] in ["M", "Hombre"]]
                 candidatos_ay = [c for c in candidatos_pub if "ayudante" in str(c.get("roles", "")).lower()]
 
@@ -167,11 +208,10 @@ class OrquestaV3:
                     semanas = self.semanas_desde_ultima(c["nombre"], fecha_semana)
                     aprendido = self.puntuacion_rol[c["nombre"]]["publicador"]
                     score = (semanas / 20.0) * 0.5 + aprendido * 0.5
-                    # Agregar nombre como tercer elemento para desempatar
                     scores.append((score, c["nombre"], c))
                 
                 scores.sort(reverse=True)
-                publicador = scores[0][2]  # El objeto candidato está en posición 2
+                publicador = scores[0][2]
                 usados.add(publicador["nombre"])
                 self.ultima_asignacion[publicador["nombre"]] = fecha_semana
 
@@ -201,50 +241,43 @@ class OrquestaV3:
         }
 
         self.save_memory()
+        logger.info("✅ Asignación completada exitosamente")
         return resultado
 
 # === Instancia global ===
 orquesta = OrquestaV3()
 
-# === Ruta principal: reemplaza 100% a OpenAI ===
+# === Rutas API ===
 @app.route("/v1/assign_meeting", methods=["POST"])
 def assign_meeting():
     try:
-        logger.info("=" * 80)
-        logger.info("Nueva petición a /v1/assign_meeting")
+        logger.info("=" * 60)
+        logger.info("📨 Nueva petición: /v1/assign_meeting")
         
         data = request.get_json()
-        logger.info(f"Payload recibido: {json.dumps(data, indent=2, ensure_ascii=False)}")
         
         if not data:
-            logger.error("No se recibió JSON en la petición")
-            return jsonify({"error": "No JSON"}), 400
+            logger.error("❌ No se recibió JSON")
+            return jsonify({"error": "No JSON body provided"}), 400
 
         fecha = data.get("week_date", datetime.today().strftime("%Y-%m-%d"))
-        logger.info(f"Fecha de semana: {fecha}")
         
-        logger.info("Iniciando asignación...")
         resultado = orquesta.asignar(data, fecha)
-        logger.info(f"Asignación exitosa: {json.dumps(resultado, indent=2, ensure_ascii=False)}")
-        logger.info("=" * 80)
         
+        logger.info("=" * 60)
         return jsonify(resultado)
         
     except Exception as e:
-        logger.error("=" * 80)
-        logger.error(f"ERROR CRÍTICO en assign_meeting: {str(e)}")
-        logger.error(f"Tipo de error: {type(e).__name__}")
-        logger.error("Traceback completo:")
+        logger.error("=" * 60)
+        logger.error(f"❌ ERROR CRÍTICO: {str(e)}")
         logger.error(traceback.format_exc())
-        logger.error("=" * 80)
+        logger.error("=" * 60)
         
         return jsonify({
             "error": str(e),
-            "tipo": type(e).__name__,
-            "traceback": traceback.format_exc()
+            "tipo": type(e).__name__
         }), 500
 
-# === Feedback con instrucciones de entrenamiento ===
 @app.route("/v1/feedback", methods=["POST"])
 def feedback():
     try:
@@ -256,9 +289,8 @@ def feedback():
         gusto = data.get("gusto")
         instrucciones = data.get("instrucciones", "")
         comentarios = data.get("comentarios", "")
-        ajustes = data.get("ajustes", {})  # Ej: {"nombre": "Juan", "rol": "presidente", "puntuacion": 0.8}
+        ajustes = data.get("ajustes", {})
         
-        # Guardar feedback en historial
         feedback_entry = {
             "timestamp": datetime.now().isoformat(),
             "week_date": week_date,
@@ -271,17 +303,14 @@ def feedback():
         orquesta.feedback_history.append(feedback_entry)
         orquesta.feedback_count += 1
         
-        # Aplicar ajustes de puntuación si se proporcionan
         if ajustes and "nombre" in ajustes and "rol" in ajustes:
             nombre = ajustes["nombre"]
             rol = ajustes["rol"]
             puntuacion = ajustes.get("puntuacion", 0.5)
             orquesta.puntuacion_rol[nombre][rol] = puntuacion
-            logger.info(f"Ajuste aplicado: {nombre} → {rol} = {puntuacion}")
+            logger.info(f"🔧 Ajuste: {nombre} → {rol} = {puntuacion}")
         
         orquesta.save_memory()
-        
-        logger.info(f"Feedback recibido: {feedback_entry}")
         
         return jsonify({
             "msg": "Gracias por tu feedback. Las instrucciones han sido guardadas.",
@@ -291,15 +320,12 @@ def feedback():
         
     except Exception as e:
         logger.error(f"Error en feedback: {str(e)}")
-        logger.error(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 @app.route("/v1/feedback/history", methods=["GET"])
 def feedback_history():
-    """Obtener historial de feedbacks"""
     try:
         limit = request.args.get("limit", 10, type=int)
-        # Retornar los últimos N feedbacks
         recent_feedbacks = orquesta.feedback_history[-limit:] if orquesta.feedback_history else []
         
         return jsonify({
@@ -318,5 +344,6 @@ def status():
         "estado": "funcionando perfectamente",
         "hermanos_recordados": len(orquesta.ultima_asignacion),
         "feedbacks": orquesta.feedback_count,
-        "feedback_history_size": len(orquesta.feedback_history)
+        "feedback_history_size": len(orquesta.feedback_history),
+        "timestamp": datetime.now().isoformat()
     })
