@@ -7,4 +7,8 @@ app.register_blueprint(orquesta_app)
 
 if __name__ == "__main__":
     print("Orquesta está lista y aprendiendo...")
-    app.run(port=8001, debug=True)
+    app.run(
+        host="0.0.0.0",  
+        port=port,
+        debug=False      
+    )
