@@ -1,108 +1,186 @@
-# Orquesta
+# Orquesta - Sistema de Asignación Inteligente
 
-## What is Orquesta?
+Orquesta es un sistema de IA que asigna roles en reuniones de manera inteligente, aprendiendo de retroalimentaciones previas para mejorar futuras asignaciones.
 
-Orquesta is an intelligent API specifically designed for the management and automatic assignment of tasks and privileges within congregations. Its purpose is to optimize the distribution of responsibilities in a fair, efficient, and data-driven manner, based on historical data and predefined rules.
+## Inicio del Servidor
 
-## Why does it exist? (Privacy and Security)
+Para iniciar el servidor, ejecuta:
 
-Orquesta was born out of a critical need: **data privacy**.
-
-Congregations handle sensitive information about their members and activities. In the age of Artificial Intelligence, sending this data to public models (like ChatGPT, Claude, or Gemini) implies a significant risk, as this information could be used to train global models or be exposed on third-party servers without adequate control.
-
-Orquesta exists to offer a **secure and private alternative**. As a specialized system, it guarantees that congregation data:
-1.  **Is not shared** with large tech corporations for model training.
-2.  **Remains under control**, processed in a dedicated environment.
-3.  **Is used solely** for the purpose of generating assignments and improving internal logistics.
-
----
-
-## Available Endpoints
-
-Below are the available endpoints to integrate Orquesta into your applications.
-
-### 1. Verify Configuration
-Verify that the API is active and get its version.
-
-**Usage:**
 ```bash
-curl -X GET https://orquesta.leapcell.app/v1/config
+python server.py
 ```
 
-### 2. Request an Access Token
-To use the assignment endpoints, you need a token. You can request one with this endpoint. An administrator will need to approve your request.
+El servidor se ejecutará en `http://127.0.0.1:8001` con modo debug activado.
 
-**Usage:**
+## Endpoints Disponibles
+
+### 1. POST /v1/assign_meeting
+
+Asigna roles para una reunión basada en candidatos y actividades.
+
+**URL:** `http://127.0.0.1:8001/v1/assign_meeting`
+
+**Método:** POST
+
+**Headers:**
+```
+Content-Type: application/json
+```
+
+**Body de ejemplo:**
+
+```json
+{
+  "week_date": "2025-12-08",
+  "candidates": [
+    {
+      "name": "Juan Pérez",
+      "gender": "M",
+      "roles": ["lector", "ayudante"]
+    },
+    {
+      "name": "María García",
+      "gender": "F",
+      "roles": ["discurso", "publicador"]
+    },
+    {
+      "name": "Carlos López",
+      "gender": "M",
+      "roles": ["presidente", "conductor"]
+    }
+  ],
+  "activities": [
+    {
+      "title": "Presidente de la reunión",
+      "type": "presidente"
+    },
+    {
+      "title": "Discurso público",
+      "type": "discurso",
+      "requires_assistant": true
+    },
+    {
+      "title": "Lectura de la Biblia",
+      "type": "lectura_biblia"
+    }
+  ],
+  "exclude_names": []
+}
+```
+
+**Respuesta exitosa (200):**
+
+```json
+{
+  "assignments": [
+    {
+      "tema": "Presidente de la reunión",
+      "publicador": {
+        "nombre": "Carlos López",
+        "genero": "M"
+      },
+      "ayudante": null
+    },
+    {
+      "tema": "Discurso público",
+      "publicador": {
+        "nombre": "María García",
+        "genero": "F"
+      },
+      "ayudante": {
+        "nombre": "Juan Pérez",
+        "genero": "M"
+      }
+    },
+    {
+      "tema": "Lectura de la Biblia",
+      "publicador": {
+        "nombre": "Juan Pérez",
+        "genero": "M"
+      },
+      "ayudante": null
+    }
+  ],
+  "week_date": "2025-12-08"
+}
+```
+
+### 2. POST /v1/feedback
+
+Envía retroalimentación sobre una asignación para que Orquesta aprenda.
+
+**URL:** `http://127.0.0.1:8001/v1/feedback`
+
+**Método:** POST
+
+**Headers:**
+```
+Content-Type: application/json
+```
+
+**Body de ejemplo:**
+
+```json
+{
+  "week_date": "2025-12-08",
+  "gusto": true
+}
+```
+
+- `gusto: true` → "Me gustó esta asignación"
+- `gusto: false` → "No me gustó esta asignación"
+
+**Respuesta exitosa (200):**
+
+```json
+{
+  "msg": "¡Genial! Aprendí qué te gusta",
+  "total_feedbacks": 1
+}
+```
+
+## Pruebas con curl
+
+### Asignar reunión:
+
 ```bash
-curl -X POST https://orquesta.leapcell.app/v1/tokens/request \
+curl -X POST http://127.0.0.1:8001/v1/assign_meeting \
   -H "Content-Type: application/json" \
   -d '{
-    "owner": "Your Name",
-    "email": "your@email.com",
-    "purpose": "Description of why you will use the API"
-  }'
-```
-
-### 3. Check Your Token Status
-Check if your token is valid, active, or when it expires.
-
-**Usage:**
-```bash
-curl -X GET https://orquesta.leapcell.app/v1/tokens/check \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE"
-```
-
-### 4. Generate an Individual Assignment (`/v1/assign`)
-Ask the system to choose the best candidate for a specific task based on history and availability.
-
-**Usage:**
-```bash
-curl -X POST https://orquesta.leapcell.app/v1/assign \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -d '{
-    "task_type": "reading",
-    "date": "2023-10-27",
+    "week_date": "2025-12-08",
     "candidates": [
-      {"id": 1, "name": "Brother A", "last_assignment": "2023-10-01", "load": 0.5},
-      {"id": 2, "name": "Brother B", "last_assignment": "2023-09-15", "load": 0.2}
-    ]
-  }'
-```
-
-### 5. Generate Assignments for a Complete Meeting (`/v1/assign_meeting`)
-Generate all necessary assignments for an entire meeting in a single call.
-
-**Usage:**
-```bash
-curl -X POST https://orquesta.leapcell.app/v1/assign_meeting \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -d '{
-    "date": "2023-10-27",
-    "meeting_type": "weekend",
-    "requirements": [
-      {"role": "chairman", "count": 1},
-      {"role": "reader", "count": 1}
+      {"name": "Juan Pérez", "gender": "M", "roles": ["lector", "ayudante"]},
+      {"name": "María García", "gender": "F", "roles": ["discurso", "publicador"]}
     ],
-    "candidates": [
-      {"id": 1, "name": "Brother A", "roles": ["chairman", "reader"]},
-      {"id": 2, "name": "Brother B", "roles": ["reader"]}
+    "activities": [
+      {"title": "Presidente de la reunión", "type": "presidente"},
+      {"title": "Discurso público", "type": "discurso", "requires_assistant": true}
     ]
   }'
 ```
 
-### 6. Send Feedback (`/v1/feedback`)
-Help Orquesta learn. Send information about whether an assignment was successful or rejected to improve future decisions.
+### Enviar feedback:
 
-**Usage:**
 ```bash
-curl -X POST https://orquesta.leapcell.app/v1/feedback \
+curl -X POST http://127.0.0.1:8001/v1/feedback \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -d '{
-    "assignment_id": "assignment_id_here",
-    "success": true,
-    "comments": "The brother accepted and performed the task correctly"
-  }'
+  -d '{"week_date": "2025-12-08", "gusto": true}'
 ```
+
+## Pruebas con interfaz web
+
+Abre `buttons.html` en un navegador para probar el envío de feedback de manera interactiva. Nota: El archivo HTML actualmente apunta al puerto 8000, pero el servidor corre en 8001. Actualiza la URL en el JavaScript si es necesario.
+
+## Funcionalidades
+
+- **Aprendizaje continuo:** Orquesta mejora sus asignaciones basándose en retroalimentaciones previas
+- **Memoria persistente:** Las asignaciones y puntuaciones se guardan en `orquesta_v2_memory.pkl`
+- **Rotación inteligente:** Prioriza personas que no han sido asignadas recientemente
+- **Capacidad por roles:** Respeta las capacidades oficiales de cada persona
+- **Exploración inicial:** Al inicio prueba asignaciones aleatorias, luego optimiza basado en aprendizaje
+
+## Notas
+
+- Las fechas deben estar en formato ISO (YYYY-MM-DD)
+- Los roles disponibles incluyen: presidente, conductor, lector, discurso, lectura_biblia, busquemos_perlas_escondidas, ayudante, publicador
+- El sistema aprende más rápido de retroalimentaciones negativas para evitar asignaciones problemáticas
